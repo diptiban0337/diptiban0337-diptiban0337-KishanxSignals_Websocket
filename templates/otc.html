@@ -1,0 +1,1476 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTC Market - Kishan X Trading</title>
+    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/indian.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Left Navigation -->
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <img src="{{ url_for('static', filename='images/logo2.png') }}" alt="KishanX Logo" class="logo">
+            <h2>KishanX</h2>
+        </div>
+        <ul class="nav-links">
+            <li><a href="{{ url_for('dashboard') }}" class="nav-link"><i class="fas fa-chart-line"></i>Dashboard</a></li>
+            <li><a href="{{ url_for('indian_market') }}" class="nav-link"><i class="fas fa-rupee-sign"></i>Indian Market</a></li>
+            <li><a href="{{ url_for('otc_market') }}" class="nav-link active"><i class="fas fa-exchange-alt"></i>OTC Market</a></li>
+            <li><a href="{{ url_for('index') }}" class="nav-link"><i class="fas fa-globe"></i>Forex</a></li>
+            <li><a href="{{ url_for('profile') }}" class="nav-link"><i class="fas fa-user"></i>Profile</a></li>
+            <li><a href="{{ url_for('subscription') }}" class="nav-link"><i class="fas fa-crown"></i>Subscription</a></li>
+            <li><a href="{{ url_for('legal') }}" class="nav-link"><i class="fas fa-gavel"></i>Legal</a></li>
+            <li><a href="{{ url_for('logout') }}" class="nav-link"><i class="fas fa-sign-out-alt"></i>Logout</a></li>
+        </ul>
+    </nav>
+
+    <div class="main" style="background: linear-gradient(135deg, #0f2027, #2c5364) !important;">
+        <div class="topbar">
+            <div class="welcome">OTC Market Trading</div>
+            <div class="demo-timer" id="demo-timer">Demo Time Left: <span id="demo-time">--:--</span></div>
+        </div>
+        {% if signals %}
+        <div class="signals-control-panel">
+            <div class="signals-controls">
+                <button class="control-btn" id="toggleSignals">
+                    <i class="fas fa-eye"></i> Show Signals
+                </button>
+                <button class="control-btn" onclick="downloadAllSignals()">
+                    <i class="fas fa-download"></i> Download All
+                </button>
+                <button class="control-btn" onclick="shareAllSignals()">
+                    <i class="fas fa-share-alt"></i> Share All
+                </button>
+                <button class="control-btn" onclick="copyAllSignals()">
+                    <i class="far fa-copy"></i> Copy All
+                </button>
+            </div>
+            <div class="signals-stats">
+                <span class="stat-item">
+                    <i class="fas fa-chart-line"></i>
+                    Total Signals: <span id="totalSignals">{{ signals|length }}</span>
+                </span>
+                <span class="stat-item">
+                    <i class="fas fa-arrow-up"></i>
+                    CALL Signals: <span id="callSignals">{{ signals|selectattr('direction', 'equalto', 'CALL')|list|length }}</span>
+                </span>
+                <span class="stat-item">
+                    <i class="fas fa-arrow-down"></i>
+                    PUT Signals: <span id="putSignals">{{ signals|selectattr('direction', 'equalto', 'PUT')|list|length }}</span>
+                </span>
+            </div>
+        </div>
+        <div class="signals-container" style="display: none;">
+            {% for signal in signals %}
+            <div class="signal-card {{ signal.direction.lower() }}">
+                <div class="signal-header">
+                    <div class="signal-pair">{{ signal.pair }}</div>
+                    <div class="signal-direction">
+                        {% if signal.direction == 'CALL' %}
+                        <i class="fas fa-arrow-up"></i> CALL
+                        {% else %}
+                        <i class="fas fa-arrow-down"></i> PUT
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="signal-body">
+                    <div class="signal-time">
+                        <i class="far fa-clock"></i>
+                        <span>Entry: {{ signal.time }}</span>
+                    </div>
+                    <div class="signal-exit">
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Exit: {{ signal.exit_time if signal.exit_time else 'N/A' }}</span>
+                    </div>
+                    <div class="signal-confidence">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Confidence: {{ signal.confidence if signal.confidence else 'N/A' }}%</span>
+                    </div>
+                </div>
+                <div class="signal-footer">
+                    <div class="signal-status {{ signal.status.lower() if signal.status else 'pending' }}">
+                        {{ signal.status if signal.status else 'Pending' }}
+                    </div>
+                    <div class="signal-actions">
+                        <button class="btn-small" onclick="copySignal('{{ signal.id }}')">
+                            <i class="far fa-copy"></i>
+                        </button>
+                        <button class="btn-small" onclick="shareSignal('{{ signal.id }}')">
+                            <i class="fas fa-share-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <div class="main-content-grid" style="background: transparent !important;">
+            <div class="market-info-card">
+                <h3 style="color:#00e6d0;margin:0 0 15px 0;">Current Rate</h3>
+                <div class="value" id="currentRate">{{ "%.5f"|format(current_rate) if current_rate else "N/A" }}</div>
+                <div class="price-info">Data Source: <span id="dataSource">{{ data_source }}</span></div>
+                <div class="price-info" style="color:#ffb300;font-size:0.95em;">Note: Price source may differ from broker's live OTC price.</div>
+                <hr style="border:1px solid #222; margin:15px 0;">
+                <div style="margin-bottom:10px;"><b>CALL</b><br>Black-Scholes Option Price<br><span style="color:#00e6d0;" id="callPrice">{{ "%.6f"|format(call_price) if call_price else "N/A" }}</span></div>
+                <div style="margin-bottom:10px;">Current Market Price<br><span class="current-market-price">{{ "%.5f"|format(current_rate) if current_rate else "N/A" }}</span></div>
+                <div style="margin-bottom:10px;"><b>PUT</b><br>Black-Scholes Option Price<br><span style="color:#00e6d0;" id="putPrice">{{ "%.6f"|format(put_price) if put_price else "N/A" }}</span></div>
+                <div style="margin-bottom:10px;">Current Market Price<br><span class="current-market-price">{{ "%.5f"|format(current_rate) if current_rate else "N/A" }}</span></div>
+                <div style="margin-bottom:10px;"><b>Broker:</b> <span id="selectedBroker">{{ selected_broker }}</span> &nbsp; | &nbsp; <b>Payout/Odds:</b> <span id="payoutVal">{{ (payout * 100) | round(0) if payout is not none else 'N/A' }}%</span></div>
+                <div style="margin-bottom:10px;"><b>Pricing Parameters:</b><br>Volatility (σ): <span id="volatilityVal">{{ volatility if volatility is not none else 'N/A' }}</span><br>Expiry (T, years): <span id="expiryVal">{{ expiry if expiry is not none else 'N/A' }}</span><br>Risk-free Rate (r): <span id="riskFreeVal">{{ risk_free_rate if risk_free_rate is not none else 'N/A' }}</span></div>
+            </div>
+            <div class="chart-card">
+                <h3 style="color:#00e6d0;margin:0 0 15px 0;">Real-Time Price Chart</h3>
+                <div class="chart-controls">
+                    <div class="indicator-toggles">
+                        <label><input type="checkbox" id="showRSI" checked> RSI</label>
+                        <label><input type="checkbox" id="showMACD" checked> MACD</label>
+                        <label><input type="checkbox" id="showVolume" checked> Volume</label>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="priceChart" style="width:100%;height:100%;background:transparent;"></canvas>
+                    <div id="noDataMsg">No real-time price data available.</div>
+                </div>
+            </div>
+            <div class="indicators-card">
+                <h3 style="color:#00e6d0;margin:0 0 15px 0;">Technical Indicators</h3>
+                <div class="indicator-section">
+                    <h4>RSI</h4>
+                    <canvas id="rsiChart" style="height:100px;width:100%;background:transparent;"></canvas>
+                </div>
+                <div class="indicator-section">
+                    <h4>MACD</h4>
+                    <canvas id="macdChart" style="height:100px;width:100%;background:transparent;"></canvas>
+                </div>
+                <div class="indicator-section">
+                    <h4>Volume</h4>
+                    <canvas id="volumeChart" style="height:100px;width:100%;background:transparent;"></canvas>
+                </div>
+            </div>
+            <div class="form-card">
+                <h3 style="color:#00e6d0;">Kishan X Signal Generator</h3>
+                <form method="POST" action="{{ url_for('otc_market') }}">
+                    <div class="form-group">
+                        <label class="form-label">Pair:</label>
+                        <select class="form-select" id="pairSelect" name="pair" onchange="updateMarketData(this.value)">
+                            {% for pair in pairs %}
+                            <option value="{{ pair }}" {% if pair == selected_pair %}selected{% endif %}>{{ pair }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Broker:</label>
+                        <select class="form-select" id="brokerSelect" name="broker">
+                            {% for broker in brokers %}
+                            <option value="{{ broker }}" {% if broker == selected_broker %}selected{% endif %}>{{ broker }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Signal Type:</label>
+                        <select class="form-select" id="signal_type" name="signal_type">
+                            <option value="CALL">CALL</option>
+                            <option value="PUT">PUT</option>
+                            <option value="BOTH">BOTH</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Start Time:</label>
+                        <div class="time-inputs">
+                            <select class="form-select" id="start_hour" name="start_hour">
+                                {% for h in range(0,24) %}
+                                <option value="{{ '%02d' % h }}">{{ '%02d' % h }}</option>
+                                {% endfor %}
+                            </select>
+                            <select class="form-select" id="start_minute" name="start_minute">
+                                {% for m in range(0,60,5) %}
+                                <option value="{{ '%02d' % m }}">{{ '%02d' % m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">End Time:</label>
+                        <div class="time-inputs">
+                            <select class="form-select" id="end_hour" name="end_hour">
+                                {% for h in range(0,24) %}
+                                <option value="{{ '%02d' % h }}">{{ '%02d' % h }}</option>
+                                {% endfor %}
+                            </select>
+                            <select class="form-select" id="end_minute" name="end_minute">
+                                {% for m in range(0,60,5) %}
+                                <option value="{{ '%02d' % m }}">{{ '%02d' % m }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn">Generate</button>
+                </form>
+            </div>
+        </div>
+        <div class="footer">
+            &copy; 2024 KishanX Trading. All rights reserved.
+        </div>
+    </div>
+
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    // Demo timer fetch
+    function updateDemoTime() {
+        fetch("/get_demo_time").then(r => r.json()).then(data => {
+            document.getElementById("demo-time").textContent = data.time_left;
+        });
+    }
+    setInterval(updateDemoTime, 1000);
+    updateDemoTime();
+
+    let priceChart = null;
+    let chartInitialized = false;
+    let rsiChart = null;
+    let macdChart = null;
+    let volumeChart = null;
+
+    function updateMarketData(pair) {
+        fetch(`/api/market_data?pair=${pair}`)
+            .then(response => response.json())
+            .then(data => {
+                updateInfoCardAndChart(data);
+            })
+            .catch(error => console.error('Error:', error));
+    }
+
+    function updateInfoCardAndChart(data) {
+        // Update info card
+        let priceValue = document.getElementById('currentRate');
+        let marketPrices = document.querySelectorAll('.current-market-price');
+        let newRate = (data && typeof data.rate === 'number') ? data.rate.toFixed(5) : 'N/A';
+        if (priceValue) priceValue.textContent = newRate;
+        marketPrices.forEach(function(el) { el.textContent = newRate; });
+        if (document.getElementById('callPrice')) document.getElementById('callPrice').textContent = data.call_price ? data.call_price.toFixed(6) : 'N/A';
+        if (document.getElementById('putPrice')) document.getElementById('putPrice').textContent = data.put_price ? data.put_price.toFixed(6) : 'N/A';
+        if (document.getElementById('selectedBroker')) document.getElementById('selectedBroker').textContent = data.selected_broker || '{{ selected_broker }}';
+        if (document.getElementById('payoutVal')) document.getElementById('payoutVal').textContent = data.payout ? Math.round(data.payout * 100) + '%' : 'N/A';
+        if (document.getElementById('volatilityVal')) document.getElementById('volatilityVal').textContent = data.volatility ? data.volatility.toFixed(2) : 'N/A';
+        if (document.getElementById('expiryVal')) document.getElementById('expiryVal').textContent = data.expiry ? data.expiry.toFixed(4) : 'N/A';
+        if (document.getElementById('riskFreeVal')) document.getElementById('riskFreeVal').textContent = data.risk_free_rate ? data.risk_free_rate.toFixed(4) : 'N/A';
+        if (document.getElementById('dataSource')) document.getElementById('dataSource').textContent = data.source || 'Unknown';
+        // Chart update with indicators if available
+        if (data && data.indicators) {
+            if (!chartInitialized) {
+                initializeChart(
+                    data.labels,
+                    data.prices,
+                    data.indicators.sma,
+                    data.indicators.ema,
+                    data.indicators.bollinger_upper,
+                    data.indicators.bollinger_lower,
+                    data.indicators.rsi,
+                    data.indicators.macd,
+                    data.indicators.signal,
+                    data.indicators.histogram,
+                    data.indicators.volume
+                );
+                chartInitialized = true;
+            } else {
+                // Update existing chart data
+                priceChart.data.labels = data.labels;
+                priceChart.data.datasets.forEach(dataset => {
+                    switch(dataset.label) {
+                        case 'Price':
+                            dataset.data = data.prices;
+                            break;
+                        case 'SMA':
+                            dataset.data = data.indicators.sma;
+                            break;
+                        case 'EMA':
+                            dataset.data = data.indicators.ema;
+                            break;
+                        case 'Bollinger Upper':
+                            dataset.data = data.indicators.bollinger_upper;
+                            break;
+                        case 'Bollinger Lower':
+                            dataset.data = data.indicators.bollinger_lower;
+                            break;
+                        case 'RSI':
+                            dataset.data = data.indicators.rsi;
+                            break;
+                        case 'MACD':
+                            dataset.data = data.indicators.macd;
+                            break;
+                        case 'Signal':
+                            dataset.data = data.indicators.signal;
+                            break;
+                        case 'Histogram':
+                            dataset.data = data.indicators.histogram;
+                            break;
+                        case 'Volume':
+                            dataset.data = data.indicators.volume;
+                            break;
+                    }
+                });
+                priceChart.update();
+            }
+            document.getElementById('noDataMsg').style.display = 'none';
+
+            // Update indicators if available
+            if (!rsiChart) {
+                initializeIndicators(
+                    data.labels,
+                    data.indicators.rsi,
+                    data.indicators.macd,
+                    data.indicators.signal,
+                    data.indicators.histogram,
+                    data.indicators.volume
+                );
+            } else {
+                updateIndicators(data);
+            }
+        } else if (data && typeof data.rate === 'number') {
+            // Fallback: just show price line
+            if (!chartInitialized) {
+                initializeChart([new Date().toLocaleTimeString()], [data.rate]);
+                chartInitialized = true;
+            } else {
+                if (priceChart.data.labels.length > 100) {
+                    priceChart.data.labels.shift();
+                    priceChart.data.datasets[0].data.shift();
+                }
+                priceChart.data.labels.push(new Date().toLocaleTimeString());
+                priceChart.data.datasets[0].data.push(data.rate);
+                priceChart.update();
+            }
+            document.getElementById('noDataMsg').style.display = 'none';
+        } else {
+            document.getElementById('noDataMsg').style.display = 'block';
+        }
+    }
+
+    function updateBrokerInfo() {
+        const brokerSelect = document.getElementById('brokerSelect');
+        const selectedBroker = brokerSelect.value;
+        const payout = getBrokerPayout(selectedBroker);
+        
+        // Update broker name and payout in the info card
+        if(document.getElementById('selectedBroker')) {
+            document.getElementById('selectedBroker').textContent = selectedBroker;
+        }
+        if(document.getElementById('payoutVal')) {
+            document.getElementById('payoutVal').textContent = Math.round(payout * 100) + '%';
+        }
+    }
+
+    function getBrokerPayout(broker) {
+        const payouts = {
+            'Quotex': 0.85,
+            'Pocket Option': 0.80,
+            'Binolla': 0.78,
+            'IQ Option': 0.82,
+            'Bullex': 0.75,
+            'Exnova': 0.77
+        };
+        return payouts[broker] || 0.75;
+    }
+
+    // Chart.js plugin for vertical dashed line on hover
+    const dashedLinePlugin = {
+        id: 'dashedLineOnHover',
+        afterDraw: function(chart) {
+            if (chart.tooltip?._active && chart.tooltip._active.length) {
+                const ctx = chart.ctx;
+                ctx.save();
+                const activePoint = chart.tooltip._active[0];
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(activePoint.element.x, chart.chartArea.top);
+                ctx.lineTo(activePoint.element.x, chart.chartArea.bottom);
+                ctx.lineWidth = 1.5;
+                ctx.strokeStyle = '#ff512f';
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+    };
+
+    function initializeChart(labels = [], prices = [], sma = [], ema = [], bb_upper = [], bb_lower = [], rsi = [], macd = [], signal = [], histogram = [], volume = []) {
+        const canvas = document.getElementById('priceChart');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        // Create datasets array with all indicators
+        let datasets = [
+            {
+                label: 'Price',
+                data: prices,
+                borderColor: '#00e6d0',
+                backgroundColor: 'rgba(0, 230, 208, 0.1)',
+                tension: 0.1,
+                fill: false,
+                pointRadius: 1,
+                pointHoverRadius: 3,
+                borderWidth: 2,
+                yAxisID: 'y'
+            }
+        ];
+
+        // Add technical indicators if available
+        if (sma.length) {
+            datasets.push({
+                label: 'SMA',
+                data: sma,
+                borderColor: '#ffb300',
+                borderDash: [6, 4],
+                fill: false,
+                pointRadius: 0,
+                borderWidth: 1.5,
+                yAxisID: 'y'
+            });
+        }
+
+        if (ema.length) {
+            datasets.push({
+                label: 'EMA',
+                data: ema,
+                borderColor: '#e91e63',
+                borderDash: [2, 2],
+                fill: false,
+                pointRadius: 0,
+                borderWidth: 1.5,
+                yAxisID: 'y'
+            });
+        }
+
+        if (bb_upper.length && bb_lower.length) {
+            datasets.push(
+                {
+                    label: 'Bollinger Upper',
+                    data: bb_upper,
+                    borderColor: '#42a5f5',
+                    borderDash: [8, 4],
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: 'Bollinger Lower',
+                    data: bb_lower,
+                    borderColor: '#42a5f5',
+                    borderDash: [8, 4],
+                    fill: false,
+                    pointRadius: 0,
+                    borderWidth: 1,
+                    yAxisID: 'y'
+                }
+            );
+        }
+
+        if (rsi.length) {
+            datasets.push({
+                label: 'RSI',
+                data: rsi,
+                borderColor: '#e91e63',
+                borderWidth: 1,
+                fill: false,
+                pointRadius: 0,
+                yAxisID: 'rsi'
+            });
+        }
+
+        if (macd.length && signal.length) {
+            datasets.push(
+                {
+                    label: 'MACD',
+                    data: macd,
+                    borderColor: '#00e6d0',
+                    borderWidth: 1,
+                    fill: false,
+                    pointRadius: 0,
+                    yAxisID: 'macd'
+                },
+                {
+                    label: 'Signal',
+                    data: signal,
+                    borderColor: '#ffb300',
+                    borderWidth: 1,
+                    fill: false,
+                    pointRadius: 0,
+                    yAxisID: 'macd'
+                },
+                {
+                    label: 'Histogram',
+                    data: histogram,
+                    type: 'bar',
+                    backgroundColor: '#42a5f5',
+                    borderColor: '#42a5f5',
+                    borderWidth: 1,
+                    yAxisID: 'macd'
+                }
+            );
+        }
+
+        if (volume.length) {
+            datasets.push({
+                label: 'Volume',
+                data: volume,
+                type: 'bar',
+                backgroundColor: 'rgba(66, 165, 245, 0.3)',
+                borderColor: '#42a5f5',
+                borderWidth: 1,
+                yAxisID: 'volume'
+            });
+        }
+
+        priceChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#fff',
+                            filter: function(item, chart) {
+                                const checkbox = document.getElementById('show' + item.text);
+                                return checkbox ? checkbox.checked : true;
+                            }
+                        }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false
+                    }
+                },
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        },
+                        ticks: {
+                            color: '#fff'
+                        }
+                    },
+                    rsi: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        min: 0,
+                        max: 100,
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            color: '#e91e63'
+                        }
+                    },
+                    macd: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            color: '#00e6d0'
+                        }
+                    },
+                    volume: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        },
+                        ticks: {
+                            color: '#42a5f5'
+                        }
+                    }
+                }
+            },
+            plugins: [dashedLinePlugin]
+        });
+
+        // Add event listeners for indicator toggles
+        document.getElementById('showRSI').addEventListener('change', function() {
+            updateChartVisibility('RSI', this.checked);
+        });
+        document.getElementById('showMACD').addEventListener('change', function() {
+            updateChartVisibility('MACD', this.checked);
+            updateChartVisibility('Signal', this.checked);
+            updateChartVisibility('Histogram', this.checked);
+        });
+        document.getElementById('showVolume').addEventListener('change', function() {
+            updateChartVisibility('Volume', this.checked);
+        });
+    }
+
+    function updateChartVisibility(label, visible) {
+        if (priceChart) {
+            const dataset = priceChart.data.datasets.find(ds => ds.label === label);
+            if (dataset) {
+                dataset.hidden = !visible;
+                priceChart.update();
+            }
+        }
+    }
+
+    function initializeIndicators(labels = [], rsi = [], macd = [], signal = [], histogram = [], volume = []) {
+        // Initialize RSI Chart
+        const rsiCtx = document.getElementById('rsiChart').getContext('2d');
+        rsiChart = new Chart(rsiCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'RSI',
+                    data: rsi,
+                    borderColor: '#e91e63',
+                    borderWidth: 2,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        min: 0,
+                        max: 100,
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    },
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff' } }
+                }
+            }
+        });
+
+        // Initialize MACD Chart
+        const macdCtx = document.getElementById('macdChart').getContext('2d');
+        macdChart = new Chart(macdCtx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'MACD',
+                        data: macd,
+                        borderColor: '#00e6d0',
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Signal',
+                        data: signal,
+                        borderColor: '#ffb300',
+                        borderWidth: 2,
+                        fill: false
+                    },
+                    {
+                        label: 'Histogram',
+                        data: histogram,
+                        type: 'bar',
+                        backgroundColor: '#42a5f5',
+                        borderColor: '#42a5f5',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    },
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff' } }
+                }
+            }
+        });
+
+        // Initialize Volume Chart
+        const volumeCtx = document.getElementById('volumeChart').getContext('2d');
+        volumeChart = new Chart(volumeCtx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Volume',
+                    data: volume,
+                    backgroundColor: '#42a5f5',
+                    borderColor: '#42a5f5',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    },
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                        ticks: { color: '#fff' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#fff' } }
+                }
+            }
+        });
+    }
+
+    function updateIndicators(data) {
+        if (!data || !data.indicators) return;
+
+        const { rsi, macd, signal, histogram, volume } = data.indicators;
+        const labels = data.labels || [];
+
+        if (rsiChart) {
+            rsiChart.data.labels = labels;
+            rsiChart.data.datasets[0].data = rsi;
+            rsiChart.update();
+        }
+
+        if (macdChart) {
+            macdChart.data.labels = labels;
+            macdChart.data.datasets[0].data = macd;
+            macdChart.data.datasets[1].data = signal;
+            macdChart.data.datasets[2].data = histogram;
+            macdChart.update();
+        }
+
+        if (volumeChart) {
+            volumeChart.data.labels = labels;
+            volumeChart.data.datasets[0].data = volume;
+            volumeChart.update();
+        }
+    }
+
+    function fetchAndUpdate() {
+        const pair = document.getElementById('pairSelect').value;
+        fetch(`/api/price/${pair}`)
+            .then(response => response.json())
+            .then(data => {
+                updateInfoCardAndChart(data);
+            })
+            .catch(() => {
+                updateInfoCardAndChart(null);
+            });
+    }
+
+    // Add event listener for broker selection change
+    document.getElementById('brokerSelect').addEventListener('change', updateBrokerInfo);
+
+    // Initial update
+    updateBrokerInfo();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        fetchAndUpdate();
+        setInterval(fetchAndUpdate, 5000);
+    });
+
+    function copySignal(signalId) {
+        // Implement copy functionality
+        navigator.clipboard.writeText(`Signal ID: ${signalId}`).then(() => {
+            alert('Signal copied to clipboard!');
+        });
+    }
+
+    function shareSignal(signalId) {
+        // Implement share functionality
+        if (navigator.share) {
+            navigator.share({
+                title: 'Trading Signal',
+                text: `Check out this trading signal: ${signalId}`,
+                url: window.location.href
+            });
+        } else {
+            alert('Sharing is not supported on this browser');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const toggleBtn = document.getElementById('toggleSignals');
+        const signalsContainer = document.querySelector('.signals-container');
+        let signalsVisible = false;
+
+        // Create highlight elements
+        const highlightArrow = document.createElement('div');
+        highlightArrow.className = 'highlight-arrow';
+        highlightArrow.innerHTML = '↑';
+        document.querySelector('.signals-control-panel').appendChild(highlightArrow);
+
+        const highlightText = document.createElement('div');
+        highlightText.className = 'highlight-text';
+        highlightText.textContent = 'New signals generated!';
+        document.querySelector('.signals-control-panel').appendChild(highlightText);
+
+        // Function to show highlight
+        function showHighlight() {
+            highlightArrow.style.display = 'block';
+            highlightText.style.display = 'block';
+            toggleBtn.classList.add('highlight');
+            
+            // Store the highlight state in localStorage
+            localStorage.setItem('signalsHighlighted', 'true');
+        }
+
+        // Check for existing highlight state on page load
+        if (localStorage.getItem('signalsHighlighted') === 'true') {
+            showHighlight();
+        }
+
+        // Function to update signal visibility
+        function updateSignalVisibility(show = true) {
+            if (signalsContainer) {
+                signalsVisible = show;
+                signalsContainer.style.display = show ? 'grid' : 'none';
+                if (toggleBtn) {
+                    toggleBtn.innerHTML = show ? 
+                        '<i class="fas fa-eye-slash"></i> Hide Signals' : 
+                        '<i class="fas fa-eye"></i> Show Signals';
+                }
+            }
+        }
+
+        // Initial setup - hide signals by default
+        updateSignalVisibility(false);
+
+        // Toggle button behavior
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', function() {
+                if (signalsVisible) {
+                    updateSignalVisibility(false);
+                } else {
+                    updateSignalVisibility(true);
+                }
+            });
+        }
+
+        // Show signals when form is submitted
+        const form = document.querySelector('form');
+        if (form) {
+            form.addEventListener('submit', function() {
+                // Show signals immediately after form submission
+                updateSignalVisibility(true);
+                // Show highlight effect
+                showHighlight();
+            });
+        }
+
+        // Add mutation observer to detect new signals
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length) {
+                    // If new signals are added, show them and highlight
+                    updateSignalVisibility(true);
+                    showHighlight();
+                }
+            });
+        });
+
+        // Start observing the signals container for changes
+        if (signalsContainer) {
+            observer.observe(signalsContainer, {
+                childList: true,
+                subtree: true
+            });
+        }
+
+        // Clear highlight state when leaving the page
+        window.addEventListener('beforeunload', function() {
+            localStorage.removeItem('signalsHighlighted');
+        });
+    });
+
+    function downloadAllSignals() {
+        const signals = Array.from(document.querySelectorAll('.signal-card')).map(card => {
+            return {
+                pair: card.querySelector('.signal-pair').textContent,
+                direction: card.querySelector('.signal-direction').textContent.trim(),
+                entry: card.querySelector('.signal-time span').textContent.replace('Entry: ', ''),
+                exit: card.querySelector('.signal-exit span').textContent.replace('Exit: ', ''),
+                confidence: card.querySelector('.signal-confidence span').textContent.replace('Confidence: ', ''),
+                status: card.querySelector('.signal-status').textContent
+            };
+        });
+
+        const csv = convertToCSV(signals);
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'trading_signals.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
+    function convertToCSV(signals) {
+        const headers = ['Pair', 'Direction', 'Entry Time', 'Exit Time', 'Confidence', 'Status'];
+        const rows = signals.map(signal => [
+            signal.pair,
+            signal.direction,
+            signal.entry,
+            signal.exit,
+            signal.confidence,
+            signal.status
+        ]);
+        return [headers, ...rows].map(row => row.join(',')).join('\n');
+    }
+
+    function shareAllSignals() {
+        const signals = Array.from(document.querySelectorAll('.signal-card')).map(card => {
+            return `${card.querySelector('.signal-pair').textContent} - ${card.querySelector('.signal-direction').textContent.trim()}`;
+        }).join('\n');
+
+        if (navigator.share) {
+            navigator.share({
+                title: 'Trading Signals',
+                text: signals,
+                url: window.location.href
+            });
+        } else {
+            alert('Sharing is not supported on this browser');
+        }
+    }
+
+    function copyAllSignals() {
+        const signals = Array.from(document.querySelectorAll('.signal-card')).map(card => {
+            return `${card.querySelector('.signal-pair').textContent} - ${card.querySelector('.signal-direction').textContent.trim()}\n` +
+                   `Entry: ${card.querySelector('.signal-time span').textContent.replace('Entry: ', '')}\n` +
+                   `Exit: ${card.querySelector('.signal-exit span').textContent.replace('Exit: ', '')}\n` +
+                   `Confidence: ${card.querySelector('.signal-confidence span').textContent.replace('Confidence: ', '')}\n` +
+                   `Status: ${card.querySelector('.signal-status').textContent}\n`;
+        }).join('\n---\n');
+
+        navigator.clipboard.writeText(signals).then(() => {
+            alert('All signals copied to clipboard!');
+        });
+    }
+    </script>
+
+    <style>
+    body {
+        margin: 0 !important;
+        padding: 0 !important;
+        font-family: 'Work Sans', sans-serif !important;
+        background: linear-gradient(135deg, #0f2027, #2c5364) !important;
+        color: #fff !important;
+    }
+    .main {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: calc(100% - 250px) !important;
+        min-height: 100vh !important;
+        background: linear-gradient(135deg, #0f2027, #2c5364) !important;
+        margin-left: 250px !important;
+    }
+    .main-content-grid {
+        display: grid !important;
+        grid-template-columns: repeat(4, 1fr) !important;
+        gap: 15px !important;
+        padding: 15px !important;
+        height: calc(100vh - 120px) !important;
+        overflow-y: auto !important;
+        max-width: 1800px !important;
+        margin: 0 auto !important;
+        background: transparent !important;
+    }
+    .market-info-card {
+        background: rgba(255, 255, 255, 0.07) !important;
+        border-radius: 18px !important;
+        padding: 20px !important;
+        height: fit-content !important;
+        margin: 0 !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .chart-card {
+        background: rgba(255, 255, 255, 0.07) !important;
+        border-radius: 18px !important;
+        padding: 20px !important;
+        height: fit-content !important;
+        display: flex !important;
+        flex-direction: column !important;
+        margin: 0 !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .chart-container {
+        position: relative !important;
+        height: 300px !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+    }
+    .indicators-card {
+        background: rgba(255, 255, 255, 0.07) !important;
+        border-radius: 18px !important;
+        padding: 20px !important;
+        height: fit-content !important;
+        margin: 0 !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .form-card {
+        background: rgba(255, 255, 255, 0.07) !important;
+        border-radius: 18px !important;
+        padding: 20px !important;
+        height: fit-content !important;
+        margin: 0 !important;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .chart-controls {
+        margin-bottom: 10px !important;
+        padding: 10px !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(5px) !important;
+        -webkit-backdrop-filter: blur(5px) !important;
+    }
+    .indicator-toggles {
+        display: flex;
+        gap: 15px;
+        flex-wrap: wrap;
+    }
+    .indicator-toggles label {
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+    }
+    .indicator-toggles input[type="checkbox"] {
+        cursor: pointer;
+    }
+    .signals-table {
+        display: none; /* Hide the old signals table */
+    }
+    .topbar {
+        padding: 15px !important;
+        margin: 0 !important;
+        width: 100% !important;
+        background: rgba(255, 255, 255, 0.07) !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .welcome {
+        color: #00e6d0;
+        font-size: 1.2em;
+        font-weight: bold;
+    }
+    .demo-timer {
+        color: #ffb300;
+        font-size: 1em;
+    }
+    .value {
+        font-size: 1.5em;
+        color: #00e6d0;
+        margin: 10px 0;
+    }
+    .price-info {
+        color: #fff;
+        font-size: 0.9em;
+        margin: 5px 0;
+    }
+    .form-group {
+        margin-bottom: 15px;
+    }
+    .form-label {
+        display: block;
+        color: #00e6d0;
+        margin-bottom: 5px;
+        font-weight: 500;
+    }
+    .form-select {
+        width: 100% !important;
+        padding: 10px !important;
+        background: rgba(255, 255, 255, 0.05) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        border-radius: 8px !important;
+        color: #fff !important;
+        transition: all 0.3s ease !important;
+    }
+    .form-select:focus {
+        border-color: #00e6d0 !important;
+        outline: none !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+    .time-inputs {
+        display: flex;
+        gap: 10px;
+    }
+    .btn {
+        background: linear-gradient(45deg, #00e6d0, #00b8d4) !important;
+        color: #fff !important;
+        padding: 12px 24px !important;
+        border: none !important;
+        border-radius: 8px !important;
+        cursor: pointer !important;
+        font-weight: 600 !important;
+        width: 100% !important;
+        transition: all 0.3s ease !important;
+    }
+    .btn:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 15px rgba(0, 230, 208, 0.3) !important;
+    }
+    .sidebar {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 250px !important;
+        height: 100vh !important;
+        background: rgba(20, 30, 48, 0.98) !important;
+        padding: 20px 0 !important;
+        box-shadow: 2px 0 4px rgba(0, 0, 0, 0.2) !important;
+        z-index: 1000 !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+        backdrop-filter: blur(10px) !important;
+        -webkit-backdrop-filter: blur(10px) !important;
+    }
+    .sidebar-header {
+        text-align: center;
+        margin: 32px 0 24px 0;
+    }
+    .sidebar-header .logo {
+        width: 120px;
+        margin-bottom: 10px;
+    }
+    .sidebar-header h2 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #00e6d0;
+        margin: 0;
+        text-shadow: 0 2px 8px rgba(0, 230, 208, 0.3);
+    }
+    .nav-links {
+        list-style: none;
+        padding: 0;
+        width: 100%;
+    }
+    .nav-links li {
+        width: 100%;
+    }
+    .nav-link {
+        display: flex;
+        align-items: center;
+        padding: 14px 32px;
+        color: #fff;
+        text-decoration: none;
+        font-size: 1.08rem;
+        transition: background 0.2s, color 0.2s;
+        border-left: 4px solid transparent;
+    }
+    .nav-link i {
+        margin-right: 12px;
+        font-size: 1.1em;
+    }
+    .nav-link.active, .nav-link:hover {
+        background: rgba(35, 41, 74, 0.95);
+        color: #00e6d0;
+        border-left: 4px solid #00e6d0;
+    }
+    .signals-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .signal-card {
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 12px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .signal-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+    }
+    .signal-card.call {
+        border-left: 4px solid #00e6d0;
+    }
+    .signal-card.put {
+        border-left: 4px solid #ff512f;
+    }
+    .signal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+    .signal-pair {
+        font-size: 1.2em;
+        font-weight: 600;
+        color: #fff;
+    }
+    .signal-direction {
+        font-size: 1.1em;
+        font-weight: 600;
+        padding: 5px 12px;
+        border-radius: 20px;
+    }
+    .signal-card.call .signal-direction {
+        color: #00e6d0;
+        background: rgba(0, 230, 208, 0.1);
+    }
+    .signal-card.put .signal-direction {
+        color: #ff512f;
+        background: rgba(255, 81, 47, 0.1);
+    }
+    .signal-body {
+        display: grid;
+        gap: 12px;
+        margin-bottom: 15px;
+    }
+    .signal-time, .signal-exit, .signal-confidence {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+        font-size: 0.95em;
+    }
+    .signal-time i, .signal-exit i, .signal-confidence i {
+        color: #00e6d0;
+        width: 20px;
+        text-align: center;
+    }
+    .signal-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 15px;
+        padding-top: 15px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .signal-status {
+        font-size: 0.9em;
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-weight: 500;
+    }
+    .signal-status.pending {
+        background: rgba(255, 193, 7, 0.1);
+        color: #ffc107;
+    }
+    .signal-status.success {
+        background: rgba(0, 230, 208, 0.1);
+        color: #00e6d0;
+    }
+    .signal-status.failed {
+        background: rgba(255, 81, 47, 0.1);
+        color: #ff512f;
+    }
+    .signal-actions {
+        display: flex;
+        gap: 8px;
+    }
+    .btn-small {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        border-radius: 6px;
+        padding: 6px 10px;
+        color: #fff;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .btn-small:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+    }
+    @media (max-width: 768px) {
+        .signals-container {
+            grid-template-columns: 1fr;
+            padding: 10px;
+        }
+    }
+    .signals-control-panel {
+        background: rgba(255, 255, 255, 0.07);
+        border-radius: 12px;
+        padding: 15px 20px;
+        margin: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .signals-controls {
+        display: flex;
+        gap: 10px;
+    }
+    .control-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: none;
+        border-radius: 8px;
+        padding: 8px 16px;
+        color: #fff;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+    }
+    .control-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+    }
+    .control-btn i {
+        font-size: 1.1em;
+    }
+    .signals-stats {
+        display: flex;
+        gap: 20px;
+    }
+    .stat-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #fff;
+        font-size: 0.95em;
+    }
+    .stat-item i {
+        color: #00e6d0;
+    }
+    @media (max-width: 768px) {
+        .signals-control-panel {
+            flex-direction: column;
+            gap: 15px;
+        }
+        .signals-controls {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .signals-stats {
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+    }
+    .indicator-section {
+        margin-bottom: 15px;
+    }
+    .indicator-section h4 {
+        color: #00e6d0;
+        margin: 0 0 8px 0;
+        font-size: 0.95em;
+    }
+    .indicator-section canvas {
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.2);
+    }
+    .signals-control-panel {
+        position: relative;
+    }
+    .highlight-arrow {
+        position: absolute;
+        right: 120px;
+        top: 45px; /* Position below the toggle button */
+        color: #ff512f; /* Red color */
+        font-size: 1.2em;
+        animation: bounce 1s infinite;
+        display: none;
+    }
+    .highlight-text {
+        position: absolute;
+        right: 150px;
+        top: 40px; /* Position below the toggle button */
+        color: #42a5f5; /* Blue color */
+        font-size: 0.9em;
+        font-weight: 500;
+        animation: fadeIn 0.5s ease-in;
+        display: none;
+    }
+    @keyframes bounce {
+        0%, 100% {
+            transform: translateY(0);
+        }
+        50% {
+            transform: translateY(-5px);
+        }
+    }
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    .control-btn.highlight {
+        animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+        0% {
+            box-shadow: 0 0 0 0 rgba(66, 165, 245, 0.4); /* Blue glow */
+        }
+        70% {
+            box-shadow: 0 0 0 10px rgba(66, 165, 245, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(66, 165, 245, 0);
+        }
+    }
+    </style>
+</body>
+</html>
+{% endblock %} 
